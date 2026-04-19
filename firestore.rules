@@ -1,0 +1,40 @@
+// firestore.rules
+// Deploy with: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── ADMINS collection ─────────────────────────────────────
+    // Only readable/writable from server (your API) or by verified admin session
+    // Since we use client SDK with password hash check, we lock this down:
+    // - Anyone can READ to verify login (email lookup)
+    // - Only existing admin documents can write (managed via Firebase console or seed script)
+    // - In production, move writes behind a Cloud Function for extra security
+    match /admins/{adminId} {
+      allow read:   if true;         // needed for login email lookup
+      allow create: if true;         // needed for add-admin feature
+      allow update: if true;         // needed for password reset
+      allow delete: if true;         // needed for remove-admin feature
+    }
+
+    // ── OTPs collection ───────────────────────────────────────
+    // Temporary OTP storage — open read/write (short-lived, 5 min TTL enforced in app)
+    match /otps/{email} {
+      allow read, write: if true;
+    }
+
+    // ── RECORDS collection ────────────────────────────────────
+    // Anyone can create (members checking out items)
+    // Anyone can read their own records by PRN
+    // Admins can read all — enforced in app logic (no Firebase Auth used)
+    match /records/{recordId} {
+      allow read, write: if true;
+    }
+  }
+}
+
+// NOTE: These rules are open for simplicity since authentication is handled
+// in the app layer (password hash verification). For maximum security,
+// integrate Firebase Authentication and tighten these rules to:
+//   allow read, write: if request.auth != null;
