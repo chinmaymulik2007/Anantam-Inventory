@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isVerifiedEmailUser() {
+      return isSignedIn() &&
+             request.auth.token.email is string &&
+             request.auth.token.email_verified == true;
+    }
+
+    function sameEmailOnCreate() {
+      return isVerifiedEmailUser() &&
+             request.resource.data.email == request.auth.token.email;
+    }
+
+    function sameEmailOnExisting() {
+      return isVerifiedEmailUser() &&
+             resource.data.email == request.auth.token.email;
+    }
+
+    function validCategory() {
+      return request.resource.data.category in [
+        'Tools & Equipment',
+        'Electronics & Components',
+        'Mechanical Parts',
+        'Other'
+      ];
+    }
+
+    function validCreate() {
+      return request.resource.data.keys().hasOnly([
+        'name','prn','email','item','category','quantity',
+        'checkoutTime','returnTime','returnCondition',
+        'status','createdAt'
+      ]) &&
+      request.resource.data.name is string &&
+      request.resource.data.prn is string &&
+      request.resource.data.email is string &&
+      request.resource.data.item is string &&
+      request.resource.data.category is string &&
+      validCategory() &&
+      request.resource.data.quantity is int &&
+      request.resource.data.quantity > 0 &&
+      request.resource.data.checkoutTime is string &&
+      request.resource.data.returnTime == '—' &&
+      request.resource.data.returnCondition == '—' &&
+      request.resource.data.status == 'Checked Out';
+    }
+
+    match /records/{recordId} {
+      allow read: if isAdmin() || sameEmailOnExisting();
+
+      allow create: if isAdmin() || (sameEmailOnCreate() && validCreate());
+
+      allow update: if isAdmin() ||
+        (sameEmailOnExisting() &&
+         resource.data.status == 'Checked Out' &&
+         request.resource.data.email == resource.data.email &&
+         request.resource.data.name == resource.data.name &&
+         request.resource.data.prn == resource.data.prn &&
+         request.resource.data.item == resource.data.item &&
+         request.resource.data.category == resource.data.category &&
+         request.resource.data.quantity == resource.data.quantity &&
+         request.resource.data.checkoutTime == resource.data.checkoutTime &&
+         request.resource.data.status == 'Returned');
+
+      allow delete: if isAdmin();
+    }
+  }
+}
